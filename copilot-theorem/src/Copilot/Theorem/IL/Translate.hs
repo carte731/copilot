@@ -211,7 +211,7 @@ trConst t v = case t of
       | otherwise = Op1 t Neg $ ConstI t $ negate $ toInteger v
 
 trOp1 :: C.Op1 a b -> (Op1, Type)
-trOp1 unaryOp = case unaryOp of 
+trOp1 = \unaryOp -> case unaryOp of 
   C.Not     -> (Not, Bool)
   C.Abs t   -> (Abs, trType t)
   -- C.Sign t  ->
@@ -236,7 +236,7 @@ trOp1 unaryOp = case unaryOp of
   _ -> error "Unsupported unary operator in input."
 
 trOp2 :: C.Op2 a b c -> (Op2, Type)
-trOp2 binaryOp = case binaryOp of 
+trOp2 = \binaryOp -> case binaryOp of 
   C.And          -> (And, Bool)
   C.Or           -> (Or, Bool)
 
@@ -269,7 +269,7 @@ trOp2 binaryOp = case binaryOp of
   _ -> error "Unsupported binary operator in input."
 
 trType :: C.Type a -> Type
-trType dataTypeOp = case dataTypeOp of
+trType = \dataTypeOp -> case dataTypeOp of
   C.Bool   -> Bool
   C.Int8   -> SBV8
   C.Int16  -> SBV16
