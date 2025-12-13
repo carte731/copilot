@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -242,15 +241,15 @@ kInduction' startK maxK s as ps = (fromMaybe (Output P.Unknown ["proof by " ++ p
                     ++ [evalAt (_n_plus i) m | m <- toCheck, i <- [0 .. k]]
           stepInv = [evalAt (_n_plus $ k + 1) m | m <- toCheck]
 
-      entailment Base assumps [ConstB False] >>= \case
+      entailment Base assumps [ConstB False] >>= \kPrime -> case kPrime of
         Unknown -> unknown
         Unsat   -> invalid $ "inconsistent assumptions"
-        Sat     -> entailment Base (modelInit ++ base) baseInv >>= \case
+        Sat     -> entailment Base (modelInit ++ base) baseInv >>= \kPrimeSat -> case kPrimeSat of
           Sat     -> invalid $ "base case failed for " ++ proofKind k
           Unknown -> unknown
           Unsat   ->
             if not inductive then valid ("proved without induction")
-            else entailment Step step stepInv >>= \case
+            else entailment Step step stepInv >>= \kPrimeUnSat -> case kPrimeUnSat of
               Sat     -> unknown
               Unknown -> unknown
               Unsat   -> valid $ "proved with " ++ proofKind k
@@ -264,12 +263,12 @@ onlySat' s as ps = (fromJust . fst) <$> runPS (script <* stopSolvers) s
       let base    = map (evalAt (Fixed 0)) modelRec
           baseInv = map (evalAt (Fixed 0)) toCheck
 
-      entailment Base assumps [ConstB False] >>= \case
+      entailment Base assumps [ConstB False] >>= \satPrime -> case satPrime of 
         Unknown -> unknown
         Unsat   -> invalid $ "inconsistent assumptions"
         Sat     -> if inductive
           then unknown' "proposition requires induction to prove."
-          else entailment Base (modelInit ++ base) (map (Op1 Bool Not) baseInv) >>= \case
+          else entailment Base (modelInit ++ base) (map (Op1 Bool Not) baseInv) >>= \satPrimeSat -> case satPrimeSat of
             Unsat   -> invalid "prop not satisfiable"
             Unknown -> unknown' "failed to find a satisfying model"
             Sat     -> sat "prop is satisfiable"
@@ -283,12 +282,12 @@ onlyValidity' s as ps = (fromJust . fst) <$> runPS (script <* stopSolvers) s
       let base    = map (evalAt (Fixed 0)) modelRec
           baseInv = map (evalAt (Fixed 0)) toCheck
 
-      entailment Base assumps [ConstB False] >>= \case
+      entailment Base assumps [ConstB False] >>= \smtPrime -> case smtPrime of
         Unknown -> unknown
         Unsat   -> invalid $ "inconsistent assumptions"
         Sat     -> if inductive
           then unknown' "proposition requires induction to prove."
-          else entailment Base (modelInit ++ base) baseInv >>= \case
+          else entailment Base (modelInit ++ base) baseInv >>= \smtPrimeSat -> case smtPrimeSat of
             Unsat   -> valid "proof by Z3"
             Unknown -> unknown
             Sat     -> invalid "Z3 found a counter-example."
@@ -344,7 +343,7 @@ getVar proj upd v = do
     Just x -> return x
 
 transB :: Expr -> Trans (SMTExpr Bool)
-transB = \case
+transB = \entailmentOp -> case entailmentOp of 
   ConstB b           -> return $ constant b
   Ite _ c e1 e2      -> ite <$> transB c <*> transB e1 <*> transB e2
   Op1 _ Not e        -> not' <$> transB e
@@ -413,7 +412,7 @@ ncVar s (Fixed i) = s ++ "_" ++ show i
 ncVar s (Var   i) = s ++ "_n" ++ show i
 
 transR :: Expr -> Trans (SMTExpr Rational)
-transR = \case
+transR = \realExpComp -> case realExpComp of
   ConstR n         -> return $ constant $ toRational n
   Ite _ c e1 e2    -> ite <$> transB c <*> transR e1 <*> transR e2
 
@@ -433,7 +432,7 @@ transR = \case
   e                -> error $ "Encountered unhandled expression (Rat): " ++ show e
 
 transBV8 :: Expr -> Trans (SMTExpr BV8)
-transBV8 = \case
+transBV8 = \bV8ExpComp -> case bV8ExpComp of
   ConstI _ n      -> return $ constant $ BitVector n
   Ite _ c e1 e2   -> ite <$> transB c <*> transBV8 e1 <*> transBV8 e2
   Op1 _ Abs e     -> abs <$> transBV8 e
@@ -445,7 +444,7 @@ transBV8 = \case
   e               -> error $ "Encountered unhandled expression (BV8): " ++ show e
 
 transBV16 :: Expr -> Trans (SMTExpr BV16)
-transBV16 = \case
+transBV16 = \bV16ExpComp -> case bV16ExpComp of
   ConstI _ n      -> return $ constant $ BitVector n
   Ite _ c e1 e2   -> ite <$> transB c <*> transBV16 e1 <*> transBV16 e2
   Op1 _ Abs e     -> abs <$> transBV16 e
@@ -457,7 +456,7 @@ transBV16 = \case
   e               -> error $ "Encountered unhandled expression (BV16): " ++ show e
 
 transBV32 :: Expr -> Trans (SMTExpr BV32)
-transBV32 = \case
+transBV32 = \bV32ExpComp -> case bV32ExpComp of
   ConstI _ n      -> return $ constant $ BitVector n
   Ite _ c e1 e2   -> ite <$> transB c <*> transBV32 e1 <*> transBV32 e2
   Op1 _ Abs e     -> abs <$> transBV32 e
@@ -469,7 +468,7 @@ transBV32 = \case
   e               -> error $ "Encountered unhandled expression (BV32): " ++ show e
 
 transBV64 :: Expr -> Trans (SMTExpr BV64)
-transBV64 = \case
+transBV64 = \bV64ExpComp -> case bV64ExpComp of
   ConstI _ n      -> return $ constant $ BitVector n
   Ite _ c e1 e2   -> ite <$> transB c <*> transBV64 e1 <*> transBV64 e2
   Op1 _ Abs e     -> abs <$> transBV64 e
